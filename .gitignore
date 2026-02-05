@@ -13,4 +13,6 @@ wheels/
 history.json
 
 voices
-output
+avatars
+output_voices
+output_avatars

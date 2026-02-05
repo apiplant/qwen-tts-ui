@@ -9,11 +9,76 @@ from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QPushButton, QTextEdit, QLabel, QComboBox, QFileDialog,
     QProgressBar, QCheckBox, QMessageBox, QLineEdit, QListWidget,
-    QListWidgetItem, QSplitter, QSlider, QStyle
+    QListWidgetItem, QSplitter, QSlider, QStyle, QDoubleSpinBox
 )
 from PyQt6.QtCore import QThread, pyqtSignal, Qt, QUrl
 from PyQt6.QtMultimedia import QMediaPlayer, QAudioOutput
+from PyQt6.QtMultimediaWidgets import QVideoWidget
 from qwen_tts import Qwen3TTSModel
+
+
+class GenerateVideoThread(QThread):
+    finished = pyqtSignal(str)
+    error = pyqtSignal(str)
+
+    def __init__(self, avatar_path, audio_path, padding_before, padding_after):
+        super().__init__()
+        self.avatar_path = avatar_path
+        self.audio_path = audio_path
+        self.padding_before = padding_before
+        self.padding_after = padding_after
+
+    def run(self):
+        try:
+            from moviepy import ImageClip, AudioFileClip, concatenate_audioclips
+            import numpy as np
+            
+            # Load audio
+            audio = AudioFileClip(self.audio_path)
+            
+            # Create silence clips for padding using numpy arrays
+            audio_clips = []
+            
+            if self.padding_before > 0:
+                # Create silence array matching audio properties
+                silence_before = np.zeros((int(self.padding_before * audio.fps), audio.nchannels if hasattr(audio, 'nchannels') else 2))
+                from moviepy import AudioArrayClip
+                silence_before_clip = AudioArrayClip(silence_before, fps=audio.fps)
+                audio_clips.append(silence_before_clip)
+            
+            audio_clips.append(audio)
+            
+            if self.padding_after > 0:
+                # Create silence array matching audio properties
+                silence_after = np.zeros((int(self.padding_after * audio.fps), audio.nchannels if hasattr(audio, 'nchannels') else 2))
+                from moviepy import AudioArrayClip
+                silence_after_clip = AudioArrayClip(silence_after, fps=audio.fps)
+                audio_clips.append(silence_after_clip)
+            
+            # Concatenate audio with padding
+            final_audio = concatenate_audioclips(audio_clips)
+            
+            # Create video from image
+            video = ImageClip(self.avatar_path, duration=final_audio.duration)
+            video = video.with_audio(final_audio)
+            
+            # Generate output filename
+            avatar_name = Path(self.avatar_path).stem
+            audio_name = Path(self.audio_path).stem
+            timestamp = datetime.now().strftime("%Y-%m-%dT%H.%M.%S")
+            output_path = f"output_avatars/{avatar_name}_{audio_name}_{timestamp}.mp4"
+            
+            os.makedirs("output_avatars", exist_ok=True)
+            video.write_videofile(output_path, codec='libx264', audio_codec='aac', fps=24, logger=None)
+            
+            # Clean up
+            video.close()
+            audio.close()
+            final_audio.close()
+            
+            self.finished.emit(output_path)
+        except Exception as e:
+            self.error.emit(str(e))
 
 
 class TranscribeThread(QThread):
@@ -69,9 +134,9 @@ class GenerateThread(QThread):
             else:
                 voice_name = "no_reference"
             timestamp = datetime.now().strftime("%Y-%m-%dT%H.%M.%S")
-            output_path = f"output/{voice_name}_{timestamp}.wav"
+            output_path = f"output_voices/{voice_name}_{timestamp}.wav"
             
-            os.makedirs("output", exist_ok=True)
+            os.makedirs("output_voices", exist_ok=True)
             sf.write(output_path, wavs[0], sr)
             
             self.finished.emit(output_path)
@@ -95,11 +160,19 @@ class TTSMainWindow(QMainWindow):
         self.player.durationChanged.connect(self.on_duration_changed)
         self.player.playbackStateChanged.connect(self.on_playback_state_changed)
         
+        # Video player setup
+        self.video_player = QMediaPlayer()
+        self.video_audio_output = QAudioOutput()
+        self.video_player.setAudioOutput(self.video_audio_output)
+        self.video_player.positionChanged.connect(self.on_video_position_changed)
+        self.video_player.durationChanged.connect(self.on_video_duration_changed)
+        self.video_player.playbackStateChanged.connect(self.on_video_playback_state_changed)
+        
         self.init_ui()
         
     def init_ui(self):
         self.setWindowTitle("Qwen TTS Voice Cloner")
-        self.setMinimumSize(1200, 700)
+        self.setMinimumSize(1200, 900)
         
         # Central widget with splitter
         central_widget = QWidget()
@@ -150,6 +223,23 @@ class TTSMainWindow(QMainWindow):
         library_btn_layout.addWidget(self.delete_audio_btn)
         right_layout.addLayout(library_btn_layout)
         
+        # Video library section
+        right_layout.addWidget(QLabel("Video Library:"))
+        
+        self.video_library_list = QListWidget()
+        self.video_library_list.itemClicked.connect(self.on_video_library_clicked)
+        self.video_library_list.itemDoubleClicked.connect(self.on_video_library_double_clicked)
+        right_layout.addWidget(self.video_library_list)
+        
+        video_library_btn_layout = QHBoxLayout()
+        self.refresh_video_library_btn = QPushButton("Refresh")
+        self.refresh_video_library_btn.clicked.connect(self.refresh_video_library)
+        video_library_btn_layout.addWidget(self.refresh_video_library_btn)
+        self.delete_video_btn = QPushButton("Delete File")
+        self.delete_video_btn.clicked.connect(self.delete_video_file)
+        video_library_btn_layout.addWidget(self.delete_video_btn)
+        right_layout.addLayout(video_library_btn_layout)
+        
         # Audio player controls
         player_group = QWidget()
         player_layout = QVBoxLayout(player_group)
@@ -191,6 +281,53 @@ class TTSMainWindow(QMainWindow):
         player_layout.addLayout(volume_layout)
         
         right_layout.addWidget(player_group)
+        
+        # Video player controls
+        video_player_group = QWidget()
+        video_player_layout = QVBoxLayout(video_player_group)
+        video_player_layout.setContentsMargins(0, 5, 0, 5)
+        
+        self.video_widget = QVideoWidget()
+        self.video_widget.setMinimumHeight(200)
+        self.video_player.setVideoOutput(self.video_widget)
+        video_player_layout.addWidget(self.video_widget)
+        
+        self.video_now_playing_label = QLabel("No video loaded")
+        self.video_now_playing_label.setWordWrap(True)
+        video_player_layout.addWidget(self.video_now_playing_label)
+        
+        video_controls_layout = QHBoxLayout()
+        self.video_play_btn = QPushButton()
+        self.video_play_btn.setIcon(self.style().standardIcon(QStyle.StandardPixmap.SP_MediaPlay))
+        self.video_play_btn.clicked.connect(self.toggle_video_playback)
+        self.video_play_btn.setEnabled(False)
+        video_controls_layout.addWidget(self.video_play_btn)
+        
+        self.video_stop_btn = QPushButton()
+        self.video_stop_btn.setIcon(self.style().standardIcon(QStyle.StandardPixmap.SP_MediaStop))
+        self.video_stop_btn.clicked.connect(self.stop_video_playback)
+        self.video_stop_btn.setEnabled(False)
+        video_controls_layout.addWidget(self.video_stop_btn)
+        
+        self.video_position_slider = QSlider(Qt.Orientation.Horizontal)
+        self.video_position_slider.sliderMoved.connect(self.set_video_position)
+        video_controls_layout.addWidget(self.video_position_slider)
+        
+        self.video_time_label = QLabel("0:00 / 0:00")
+        video_controls_layout.addWidget(self.video_time_label)
+        
+        video_player_layout.addLayout(video_controls_layout)
+        
+        video_volume_layout = QHBoxLayout()
+        video_volume_layout.addWidget(QLabel("Volume:"))
+        self.video_volume_slider = QSlider(Qt.Orientation.Horizontal)
+        self.video_volume_slider.setRange(0, 100)
+        self.video_volume_slider.setValue(100)
+        self.video_volume_slider.valueChanged.connect(self.change_video_volume)
+        video_volume_layout.addWidget(self.video_volume_slider)
+        video_player_layout.addLayout(video_volume_layout)
+        
+        right_layout.addWidget(video_player_group)
         
         splitter.addWidget(right_widget)
         splitter.setStretchFactor(0, 2)
@@ -260,6 +397,47 @@ class TTSMainWindow(QMainWindow):
         self.generate_btn.clicked.connect(self.generate_audio)
         layout.addWidget(self.generate_btn)
         
+        # Avatar Video Generation section
+        layout.addWidget(QLabel("=== Avatar Video Generation ==="))
+        
+        avatar_layout = QHBoxLayout()
+        avatar_layout.addWidget(QLabel("Avatar Image:"))
+        self.avatar_combo = QComboBox()
+        avatar_layout.addWidget(self.avatar_combo, stretch=1)
+        self.refresh_avatars_btn = QPushButton("Refresh")
+        self.refresh_avatars_btn.clicked.connect(self.refresh_avatars)
+        avatar_layout.addWidget(self.refresh_avatars_btn)
+        layout.addLayout(avatar_layout)
+        
+        audio_layout = QHBoxLayout()
+        audio_layout.addWidget(QLabel("Audio File:"))
+        self.video_audio_combo = QComboBox()
+        audio_layout.addWidget(self.video_audio_combo, stretch=1)
+        self.refresh_video_audio_btn = QPushButton("Refresh")
+        self.refresh_video_audio_btn.clicked.connect(self.refresh_video_audio_list)
+        audio_layout.addWidget(self.refresh_video_audio_btn)
+        layout.addLayout(audio_layout)
+        
+        padding_layout = QHBoxLayout()
+        padding_layout.addWidget(QLabel("Padding Before (s):"))
+        self.padding_before_spin = QDoubleSpinBox()
+        self.padding_before_spin.setRange(0, 10)
+        self.padding_before_spin.setValue(1.0)
+        self.padding_before_spin.setSingleStep(0.1)
+        padding_layout.addWidget(self.padding_before_spin)
+        
+        padding_layout.addWidget(QLabel("Padding After (s):"))
+        self.padding_after_spin = QDoubleSpinBox()
+        self.padding_after_spin.setRange(0, 10)
+        self.padding_after_spin.setValue(1.0)
+        self.padding_after_spin.setSingleStep(0.1)
+        padding_layout.addWidget(self.padding_after_spin)
+        layout.addLayout(padding_layout)
+        
+        self.generate_video_btn = QPushButton("Generate Avatar Video")
+        self.generate_video_btn.clicked.connect(self.generate_video)
+        layout.addWidget(self.generate_video_btn)
+        
         # Progress bar
         self.progress_bar = QProgressBar()
         self.progress_bar.setVisible(False)
@@ -272,8 +450,11 @@ class TTSMainWindow(QMainWindow):
         
         # Initial refresh
         self.refresh_voices()
+        self.refresh_avatars()
+        self.refresh_video_audio_list()
         self.refresh_history_list()
         self.refresh_audio_library()
+        self.refresh_video_library()
     
     def refresh_voices(self):
         self.voice_combo.clear()
@@ -518,7 +699,7 @@ class TTSMainWindow(QMainWindow):
     
     def refresh_audio_library(self):
         self.audio_library_list.clear()
-        output_dir = Path("output")
+        output_dir = Path("output_voices")
         if output_dir.exists():
             audio_files = sorted(output_dir.glob("*.wav"), key=lambda x: x.stat().st_mtime, reverse=True)
             for audio_file in audio_files:
@@ -612,6 +793,163 @@ class TTSMainWindow(QMainWindow):
                 os.remove(audio_path)
                 self.refresh_audio_library()
                 self.status_label.setText(f"Deleted: {Path(audio_path).name}")
+            except Exception as e:
+                QMessageBox.critical(self, "Error", f"Failed to delete file:\n{e}")
+    
+    def refresh_avatars(self):
+        self.avatar_combo.clear()
+        avatars_dir = Path("avatars")
+        if avatars_dir.exists():
+            avatar_files = sorted(avatars_dir.glob("*.*"))
+            # Filter for common image formats
+            image_extensions = {'.jpg', '.jpeg', '.png', '.bmp', '.gif', '.webp'}
+            for avatar_file in avatar_files:
+                if avatar_file.suffix.lower() in image_extensions:
+                    self.avatar_combo.addItem(avatar_file.name, str(avatar_file))
+    
+    def refresh_video_audio_list(self):
+        self.video_audio_combo.clear()
+        output_dir = Path("output_voices")
+        if output_dir.exists():
+            audio_files = sorted(output_dir.glob("*.wav"), key=lambda x: x.stat().st_mtime, reverse=True)
+            for audio_file in audio_files:
+                self.video_audio_combo.addItem(audio_file.name, str(audio_file))
+    
+    def generate_video(self):
+        if self.avatar_combo.count() == 0:
+            QMessageBox.warning(self, "Warning", "No avatar images found in 'avatars' directory")
+            return
+        
+        if self.video_audio_combo.count() == 0:
+            QMessageBox.warning(self, "Warning", "No audio files found in 'output_voices' directory")
+            return
+        
+        avatar_path = self.avatar_combo.currentData()
+        audio_path = self.video_audio_combo.currentData()
+        padding_before = self.padding_before_spin.value()
+        padding_after = self.padding_after_spin.value()
+        
+        self.status_label.setText("Generating avatar video...")
+        self.progress_bar.setVisible(True)
+        self.generate_video_btn.setEnabled(False)
+        
+        self.video_thread = GenerateVideoThread(avatar_path, audio_path, padding_before, padding_after)
+        self.video_thread.finished.connect(self.on_video_generate_finished)
+        self.video_thread.error.connect(self.on_video_generate_error)
+        self.video_thread.start()
+    
+    def on_video_generate_finished(self, output_path):
+        self.status_label.setText(f"Video generated: {output_path}")
+        self.progress_bar.setVisible(False)
+        self.generate_video_btn.setEnabled(True)
+        
+        # Refresh video library and auto-play
+        self.refresh_video_library()
+        self.load_video(output_path)
+        self.video_player.play()
+    
+    def on_video_generate_error(self, error):
+        QMessageBox.critical(self, "Error", f"Failed to generate video:\n{error}\n\nMake sure moviepy is installed: pip install moviepy")
+        self.status_label.setText("Video generation failed")
+        self.progress_bar.setVisible(False)
+        self.generate_video_btn.setEnabled(True)
+    
+    def refresh_video_library(self):
+        self.video_library_list.clear()
+        output_dir = Path("output_avatars")
+        if output_dir.exists():
+            video_files = sorted(output_dir.glob("*.mp4"), key=lambda x: x.stat().st_mtime, reverse=True)
+            for video_file in video_files:
+                # Get file info
+                stat = video_file.stat()
+                size_mb = stat.st_size / (1024 * 1024)
+                mod_time = datetime.fromtimestamp(stat.st_mtime).strftime("%Y-%m-%d %H:%M")
+                
+                item_text = f"{video_file.name} ({size_mb:.1f}MB) - {mod_time}"
+                item = QListWidgetItem(item_text)
+                item.setData(Qt.ItemDataRole.UserRole, str(video_file))
+                self.video_library_list.addItem(item)
+    
+    def on_video_library_clicked(self, item):
+        video_path = item.data(Qt.ItemDataRole.UserRole)
+        self.load_video(video_path)
+    
+    def on_video_library_double_clicked(self, item):
+        video_path = item.data(Qt.ItemDataRole.UserRole)
+        self.load_video(video_path)
+        self.video_player.play()
+    
+    def load_video(self, video_path):
+        self.video_player.setSource(QUrl.fromLocalFile(video_path))
+        self.video_now_playing_label.setText(f"Loaded: {Path(video_path).name}")
+        self.video_play_btn.setEnabled(True)
+        self.video_stop_btn.setEnabled(True)
+    
+    def toggle_video_playback(self):
+        if self.video_player.playbackState() == QMediaPlayer.PlaybackState.PlayingState:
+            self.video_player.pause()
+        else:
+            self.video_player.play()
+    
+    def stop_video_playback(self):
+        self.video_player.stop()
+    
+    def on_video_playback_state_changed(self, state):
+        if state == QMediaPlayer.PlaybackState.PlayingState:
+            self.video_play_btn.setIcon(self.style().standardIcon(QStyle.StandardPixmap.SP_MediaPause))
+        else:
+            self.video_play_btn.setIcon(self.style().standardIcon(QStyle.StandardPixmap.SP_MediaPlay))
+    
+    def on_video_position_changed(self, position):
+        self.video_position_slider.setValue(position)
+        self.update_video_time_label()
+    
+    def on_video_duration_changed(self, duration):
+        self.video_position_slider.setRange(0, duration)
+        self.update_video_time_label()
+    
+    def set_video_position(self, position):
+        self.video_player.setPosition(position)
+    
+    def update_video_time_label(self):
+        position = self.video_player.position()
+        duration = self.video_player.duration()
+        
+        pos_min = position // 60000
+        pos_sec = (position % 60000) // 1000
+        dur_min = duration // 60000
+        dur_sec = (duration % 60000) // 1000
+        
+        self.video_time_label.setText(f"{pos_min}:{pos_sec:02d} / {dur_min}:{dur_sec:02d}")
+    
+    def change_video_volume(self, value):
+        self.video_audio_output.setVolume(value / 100.0)
+    
+    def delete_video_file(self):
+        current_item = self.video_library_list.currentItem()
+        if not current_item:
+            return
+        
+        video_path = current_item.data(Qt.ItemDataRole.UserRole)
+        reply = QMessageBox.question(
+            self, 'Delete Video File',
+            f'Are you sure you want to delete:\n{Path(video_path).name}?',
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No
+        )
+        
+        if reply == QMessageBox.StandardButton.Yes:
+            try:
+                # Stop playback if this file is playing
+                if self.video_player.source() == QUrl.fromLocalFile(video_path):
+                    self.video_player.stop()
+                    self.video_now_playing_label.setText("No video loaded")
+                    self.video_play_btn.setEnabled(False)
+                    self.video_stop_btn.setEnabled(False)
+                
+                os.remove(video_path)
+                self.refresh_video_library()
+                self.status_label.setText(f"Deleted: {Path(video_path).name}")
             except Exception as e:
                 QMessageBox.critical(self, "Error", f"Failed to delete file:\n{e}")
 
