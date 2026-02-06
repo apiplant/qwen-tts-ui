@@ -16,3 +16,8 @@ voices
 avatars
 output_voices
 output_avatars
+
+
+.claude
+models
+temp

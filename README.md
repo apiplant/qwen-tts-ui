@@ -76,3 +76,31 @@ qwen-tts/
 ├── generate.py      # Original CLI generation script
 └── pyproject.toml   # Project configuration
 ```
+
+## Wan2.2 S2V Video Generation
+
+The application now supports high-quality video generation using Wan2.2 Speech-to-Video (S2V) model!
+
+### Setup
+
+1. Ensure you have the Wan2.2 checkpoint files:
+   ```bash
+   ./setup_wan_checkpoints.sh
+   ```
+
+2. Install Wan2.2 dependencies:
+   ```bash
+   cd Wan2.2
+   pip install -r requirements_s2v.txt
+   ```
+
+### Usage
+
+1. Select an avatar image from the dropdown
+2. Select an audio file from your generated voices
+3. (Optional) Enter a prompt describing the video style/scene
+4. Click "Generate Avatar Video (Wan2.2 S2V)"
+
+The Wan2.2 S2V model creates realistic, lip-synced videos from your avatar image and audio!
+
+**Note:** Wan2.2 generation requires significant GPU memory and may take several minutes per video.
