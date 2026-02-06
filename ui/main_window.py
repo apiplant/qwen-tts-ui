@@ -210,7 +210,7 @@ class TTSMainWindow(QMainWindow):
 
         splitter.addWidget(right_widget)
         splitter.setStretchFactor(0, 2)
-        splitter.setStretchFactor(1, 1)
+        splitter.setStretchFactor(1, 4)
 
         # === Model Status Section ===
         models_group = QWidget()
@@ -289,6 +289,7 @@ class TTSMainWindow(QMainWindow):
         models_layout.addLayout(wan_layout_model)
 
         layout.addWidget(models_group)
+        layout.addSpacing(15)
 
         # Voice selection section
         voice_layout = QHBoxLayout()
@@ -303,43 +304,60 @@ class TTSMainWindow(QMainWindow):
         self.no_reference_checkbox.stateChanged.connect(self.on_no_reference_toggled)
         voice_layout.addWidget(self.no_reference_checkbox)
         layout.addLayout(voice_layout)
+        layout.addSpacing(10)
 
-        # Transcribe button
-        transcribe_layout = QHBoxLayout()
-        self.transcribe_btn = QPushButton("Transcribe Reference Audio")
+        # Reference text section with transcribe and mini player
+        ref_header = QHBoxLayout()
+        ref_header.addWidget(QLabel("Reference Text:"))
+        ref_header.addStretch()
+        self.ref_play_btn = QPushButton()
+        self.ref_play_btn.setIcon(self.style().standardIcon(QStyle.StandardPixmap.SP_MediaPlay))
+        self.ref_play_btn.setFixedSize(28, 28)
+        self.ref_play_btn.clicked.connect(self.play_reference_voice)
+        self.ref_play_btn.setEnabled(False)
+        self.ref_play_btn.setToolTip("Play reference voice")
+        ref_header.addWidget(self.ref_play_btn)
+        self.ref_stop_btn = QPushButton()
+        self.ref_stop_btn.setIcon(self.style().standardIcon(QStyle.StandardPixmap.SP_MediaStop))
+        self.ref_stop_btn.setFixedSize(28, 28)
+        self.ref_stop_btn.clicked.connect(self.stop_reference_voice)
+        self.ref_stop_btn.setEnabled(False)
+        self.ref_stop_btn.setToolTip("Stop")
+        ref_header.addWidget(self.ref_stop_btn)
+        self.transcribe_btn = QPushButton("Transcribe")
         self.transcribe_btn.clicked.connect(self.transcribe_audio)
         self.transcribe_btn.setEnabled(False)
-        transcribe_layout.addWidget(self.transcribe_btn)
-        transcribe_layout.addStretch()
-        layout.addLayout(transcribe_layout)
+        ref_header.addWidget(self.transcribe_btn)
+        layout.addLayout(ref_header)
 
-        # Reference text section
-        layout.addWidget(QLabel("Reference Text:"))
         self.ref_text_edit = QTextEdit()
         self.ref_text_edit.setMaximumHeight(100)
         self.ref_text_edit.setPlaceholderText("Enter or transcribe the text spoken in the reference audio...")
+        self.ref_text_edit.setAcceptRichText(False)
         layout.addWidget(self.ref_text_edit)
+        layout.addSpacing(15)
 
-        # Language selection
-        lang_layout = QHBoxLayout()
-        lang_layout.addWidget(QLabel("Target Language:"))
+        # Text to generate section with language selector
+        gen_header = QHBoxLayout()
+        gen_header.addWidget(QLabel("Text to Generate:"))
+        gen_header.addStretch()
+        gen_header.addWidget(QLabel("Language:"))
         self.language_combo = QComboBox()
         self.language_combo.addItems(["English", "Italian", "Spanish", "French", "German", "Chinese", "Japanese", "Korean"])
-        lang_layout.addWidget(self.language_combo)
-        lang_layout.addStretch()
-        layout.addLayout(lang_layout)
+        gen_header.addWidget(self.language_combo)
+        layout.addLayout(gen_header)
 
-        # Text to generate section
-        layout.addWidget(QLabel("Text to Generate:"))
         self.generate_text_edit = QTextEdit()
         self.generate_text_edit.setMaximumHeight(100)
         self.generate_text_edit.setPlaceholderText("Enter the text you want to generate with the cloned voice...")
+        self.generate_text_edit.setAcceptRichText(False)
         layout.addWidget(self.generate_text_edit)
 
         # Generate button
         self.generate_btn = QPushButton("Generate Audio")
         self.generate_btn.clicked.connect(self.generate_audio)
         layout.addWidget(self.generate_btn)
+        layout.addSpacing(20)
 
         # Avatar gallery header
         avatar_header = QHBoxLayout()
@@ -368,41 +386,56 @@ class TTSMainWindow(QMainWindow):
         self.avatar_labels = []
 
         audio_layout = QHBoxLayout()
-        audio_layout.addWidget(QLabel("Audio File:"))
-        self.video_audio_combo = QComboBox()
-        audio_layout.addWidget(self.video_audio_combo, stretch=1)
-        self.refresh_video_audio_btn = QPushButton("Refresh")
-        self.refresh_video_audio_btn.clicked.connect(self.refresh_video_audio_list)
-        audio_layout.addWidget(self.refresh_video_audio_btn)
-        layout.addLayout(audio_layout)
-
-        # Audio padding options
-        padding_layout = QHBoxLayout()
-        padding_layout.addWidget(QLabel("Padding:"))
-        padding_layout.addWidget(QLabel("Before:"))
+        audio_layout.addWidget(QLabel("Audio:"))
+        self.selected_audio_label = QLabel("Select from Audio Library →")
+        self.selected_audio_label.setStyleSheet("color: #888; font-style: italic;")
+        audio_layout.addWidget(self.selected_audio_label, stretch=1)
+        audio_layout.addWidget(QLabel("Pad:"))
         self.padding_before_spin = QDoubleSpinBox()
         self.padding_before_spin.setRange(0, 10)
-        self.padding_before_spin.setValue(0.5)
+        self.padding_before_spin.setValue(0.7)
         self.padding_before_spin.setSuffix("s")
         self.padding_before_spin.setSingleStep(0.1)
-        padding_layout.addWidget(self.padding_before_spin)
-        padding_layout.addWidget(QLabel("After:"))
+        self.padding_before_spin.setFixedWidth(70)
+        self.padding_before_spin.setToolTip("Silence before audio")
+        audio_layout.addWidget(self.padding_before_spin)
         self.padding_after_spin = QDoubleSpinBox()
         self.padding_after_spin.setRange(0, 10)
         self.padding_after_spin.setValue(0.5)
         self.padding_after_spin.setSuffix("s")
         self.padding_after_spin.setSingleStep(0.1)
-        padding_layout.addWidget(self.padding_after_spin)
-        padding_layout.addStretch()
-        layout.addLayout(padding_layout)
+        self.padding_after_spin.setFixedWidth(70)
+        self.padding_after_spin.setToolTip("Silence after audio")
+        audio_layout.addWidget(self.padding_after_spin)
+        layout.addLayout(audio_layout)
 
-        # Wan2.2 S2V generation
-        wan_layout = QHBoxLayout()
-        wan_layout.addWidget(QLabel("Prompt (optional):"))
-        self.wan_prompt_edit = QLineEdit()
+        self.selected_video_audio_path = None
+
+        # Wan2.2 S2V generation - Prompt
+        layout.addWidget(QLabel("Prompt (optional):"))
+        self.wan_prompt_edit = QTextEdit()
+        self.wan_prompt_edit.setMaximumHeight(60)
         self.wan_prompt_edit.setPlaceholderText("Describe the video style/scene (leave empty for default)")
-        wan_layout.addWidget(self.wan_prompt_edit)
-        layout.addLayout(wan_layout)
+        self.wan_prompt_edit.setAcceptRichText(False)
+        layout.addWidget(self.wan_prompt_edit)
+
+        # Options row: Lightning lora + Trim start
+        lora_layout = QHBoxLayout()
+        self.lightning_lora_checkbox = QCheckBox("Lightning LoRA (4 steps)")
+        self.lightning_lora_checkbox.setChecked(True)
+        self.lightning_lora_checkbox.setToolTip("Enable for faster generation (4 steps). Disable for slower but potentially higher quality (20 steps).")
+        lora_layout.addWidget(self.lightning_lora_checkbox)
+        lora_layout.addStretch()
+        lora_layout.addWidget(QLabel("Trim start:"))
+        self.trim_start_spin = QDoubleSpinBox()
+        self.trim_start_spin.setRange(0, 5)
+        self.trim_start_spin.setValue(0.2)
+        self.trim_start_spin.setSuffix("s")
+        self.trim_start_spin.setSingleStep(0.1)
+        self.trim_start_spin.setFixedWidth(70)
+        self.trim_start_spin.setToolTip("Cut first X seconds from output video (fixes overbaked first frames)")
+        lora_layout.addWidget(self.trim_start_spin)
+        layout.addLayout(lora_layout)
 
         self.generate_wan_video_btn = QPushButton("Generate Avatar Video")
         self.generate_wan_video_btn.clicked.connect(self.generate_wan_video)
@@ -418,10 +451,12 @@ class TTSMainWindow(QMainWindow):
         self.status_label = QLabel("Ready")
         layout.addWidget(self.status_label)
 
+        # Push content up
+        layout.addStretch()
+
         # Initial refresh
         self.refresh_voices()
         self.refresh_avatars()
-        self.refresh_video_audio_list()
         self.refresh_history_list()
         self.refresh_audio_library()
         self.refresh_video_library()
@@ -440,16 +475,30 @@ class TTSMainWindow(QMainWindow):
     def on_voice_changed(self, voice_name):
         if voice_name:
             self.current_voice_path = self.voice_combo.currentData()
-            self.transcribe_btn.setEnabled(not self.no_reference_checkbox.isChecked())
+            enabled = not self.no_reference_checkbox.isChecked()
+            self.transcribe_btn.setEnabled(enabled)
+            self.ref_play_btn.setEnabled(enabled)
+            self.ref_stop_btn.setEnabled(enabled)
 
     def on_no_reference_toggled(self, state):
         is_checked = state == Qt.CheckState.Checked.value
         self.voice_combo.setEnabled(not is_checked)
         self.refresh_voices_btn.setEnabled(not is_checked)
-        self.transcribe_btn.setEnabled(not is_checked and self.current_voice_path is not None)
+        enabled = not is_checked and self.current_voice_path is not None
+        self.transcribe_btn.setEnabled(enabled)
+        self.ref_play_btn.setEnabled(enabled)
+        self.ref_stop_btn.setEnabled(enabled)
         self.ref_text_edit.setEnabled(not is_checked)
         if is_checked:
             self.current_voice_path = None
+
+    def play_reference_voice(self):
+        if self.current_voice_path:
+            self.player.setSource(QUrl.fromLocalFile(self.current_voice_path))
+            self.player.play()
+
+    def stop_reference_voice(self):
+        self.player.stop()
 
     def transcribe_audio(self):
         if not self.current_voice_path:
@@ -646,11 +695,14 @@ class TTSMainWindow(QMainWindow):
             'output': output_path
         })
 
-        # Refresh audio library and video audio selector, then auto-play
+        # Refresh audio library and auto-play
         self.refresh_audio_library()
-        self.refresh_video_audio_list()
         self.load_audio(output_path)
         self.player.play()
+        # Also select for video generation
+        self.selected_video_audio_path = output_path
+        self.selected_audio_label.setText(Path(output_path).name)
+        self.selected_audio_label.setStyleSheet("color: #51cf66; font-style: normal;")
 
     def on_generate_audio_error(self, error):
         QMessageBox.critical(self, "Error", f"Failed to generate audio:\n{error}")
@@ -765,6 +817,10 @@ class TTSMainWindow(QMainWindow):
     def on_audio_library_clicked(self, item):
         audio_path = item.data(Qt.ItemDataRole.UserRole)
         self.load_audio(audio_path)
+        # Also select for video generation
+        self.selected_video_audio_path = audio_path
+        self.selected_audio_label.setText(Path(audio_path).name)
+        self.selected_audio_label.setStyleSheet("color: #51cf66; font-style: normal;")
 
     def on_audio_library_double_clicked(self, item):
         audio_path = item.data(Qt.ItemDataRole.UserRole)
@@ -906,14 +962,6 @@ class TTSMainWindow(QMainWindow):
 
         label.setStyleSheet("border: 3px solid #4dabf7; border-radius: 5px;")
 
-    def refresh_video_audio_list(self):
-        self.video_audio_combo.clear()
-        output_dir = Path("output_voices")
-        if output_dir.exists():
-            audio_files = sorted(output_dir.glob("*.wav"), key=lambda x: x.stat().st_mtime, reverse=True)
-            for audio_file in audio_files:
-                self.video_audio_combo.addItem(audio_file.name, str(audio_file))
-
     def _pad_audio(self, audio_path: str, padding_before: float, padding_after: float) -> str:
         """Add silence padding before and after audio file"""
         import wave
@@ -952,13 +1000,13 @@ class TTSMainWindow(QMainWindow):
             QMessageBox.warning(self, "Warning", "No avatar selected. Add images to 'avatars' directory.")
             return
 
-        if self.video_audio_combo.count() == 0:
-            QMessageBox.warning(self, "Warning", "No audio files found in 'output_voices' directory")
+        if not self.selected_video_audio_path:
+            QMessageBox.warning(self, "Warning", "Please select an audio file from the Audio Library")
             return
 
         avatar_path = self.selected_avatar_path
-        audio_path = self.video_audio_combo.currentData()
-        prompt = self.wan_prompt_edit.text().strip() or None
+        audio_path = self.selected_video_audio_path
+        prompt = self.wan_prompt_edit.toPlainText().strip() or None
 
         # Apply audio padding if needed
         padding_before = self.padding_before_spin.value()
@@ -978,7 +1026,8 @@ class TTSMainWindow(QMainWindow):
             audio_path=audio_path,
             prompt=prompt or "A person speaking naturally with realistic facial movements.",
             use_wan_s2v=True,
-            use_lightning_lora=True,
+            use_lightning_lora=self.lightning_lora_checkbox.isChecked(),
+            trim_start=self.trim_start_spin.value(),
         )
         self.wan_video_thread.finished.connect(self.on_wan_video_generate_finished)
         self.wan_video_thread.error.connect(self.on_wan_video_generate_error)

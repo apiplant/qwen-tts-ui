@@ -228,6 +228,7 @@ def generate_video(
     seed: int = -1,
     use_lightning_lora: bool = True,
     use_wan_s2v: bool = True,
+    trim_start: float = 0.0,
     progress_callback: Optional[Callable[[int, int, str], None]] = None,
 ) -> str:
     """
@@ -246,6 +247,7 @@ def generate_video(
         seed: Random seed (-1 for random)
         use_lightning_lora: Use 4-step lightning lora for faster generation
         use_wan_s2v: Use Wan S2V model (False for static video fallback)
+        trim_start: Seconds to trim from start of output video
         progress_callback: Optional callback(current_step, total_steps, message)
 
     Returns:
@@ -328,7 +330,8 @@ def generate_video(
             audio=audio
         )[0]
 
-        # Generate first chunk
+        # Generate first chunk (with +1 frame hack to avoid overbaked first frame)
+        # We generate one extra frame and remove it later
         log(5, 10, f"Generating chunk 1/{num_chunks}...")
         s2v_result = cache.wan_s2v.execute(
             positive=positive,
@@ -336,7 +339,7 @@ def generate_video(
             vae=cache.vae,
             width=width,
             height=height,
-            length=CHUNK_FRAMES,
+            length=CHUNK_FRAMES + 1,  # +1 for first frame hack
             batch_size=1,
             audio_encoder_output=audio_embeds,
             ref_image=image,
@@ -395,12 +398,24 @@ def generate_video(
             )[0]
 
         # Decode
-        log(8, 10, f"Decoding {total_frames} frames...")
+        log(8, 10, f"Decoding {total_frames + 1} frames...")
         frames = cache.vae_decode.decode(samples=samples, vae=cache.vae)[0]
+
+        # Remove first frame (overbaked frame hack)
+        frames = frames[1:]
 
         # Trim to match audio duration
         if frames.shape[0] > required_frames:
             frames = frames[:required_frames]
+
+        # Trim start of video if requested
+        trim_frames = int(trim_start * FPS)
+        if trim_frames > 0 and trim_frames < frames.shape[0]:
+            frames = frames[trim_frames:]
+            # Also trim audio to match
+            trim_samples = int(trim_start * sample_rate)
+            if audio_data is not None and trim_samples < audio_data.shape[-1]:
+                audio_data = audio_data[..., trim_samples:]
 
         # Save video
         log(9, 10, "Saving video...")
@@ -503,6 +518,7 @@ class GenerateVideoThread(QThread if HAS_PYQT6 else object):
         use_wan_s2v: bool = True,
         width: int = 640,
         height: int = 640,
+        trim_start: float = 0.0,
         **kwargs  # Accept legacy args
     ):
         super().__init__()
@@ -516,6 +532,7 @@ class GenerateVideoThread(QThread if HAS_PYQT6 else object):
         self.use_wan_s2v = use_wan_s2v
         self.width = width
         self.height = height
+        self.trim_start = trim_start
 
     def run(self):
         try:
@@ -534,6 +551,7 @@ class GenerateVideoThread(QThread if HAS_PYQT6 else object):
                 use_wan_s2v=self.use_wan_s2v,
                 width=self.width,
                 height=self.height,
+                trim_start=self.trim_start,
                 progress_callback=progress_cb,
             )
 
