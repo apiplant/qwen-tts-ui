@@ -6,11 +6,23 @@ requires-python = ">=3.10"
 dependencies = [
     "PyQt6>=6.6.0",
     "torch>=2.0.0",
+    "torchvision>=0.15.0",
     "soundfile>=0.12.0",
     "openai-whisper>=20231117",
     "qwen-tts>=0.0.5",
     "moviepy>=2.1.1",
+    "comfy-script[default]>=0.6.1",
+    "sqlalchemy>=2.0.46",
+    "alembic",
+    "aiohttp>=3.13.3",
+    "aiosignal>=1.4.0",
+    "comfy-aimdo>=0.1.7",
+    "comfyui",
+    "av>=15.1.0",
 ]
 
 [project.scripts]
 tts-ui = "qwen_tts_ui:main"
+
+[tool.uv.sources]
+comfyui = { git = "https://github.com/hiddenswitch/ComfyUI.git" }
