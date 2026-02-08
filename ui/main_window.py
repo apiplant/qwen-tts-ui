@@ -1,6 +1,8 @@
 import sys
 import os
 import json
+import subprocess
+import platform
 from datetime import datetime
 from pathlib import Path
 import torch
@@ -86,7 +88,14 @@ class TTSMainWindow(QMainWindow):
         right_layout.addLayout(history_btn_layout)
 
         # Audio library section
-        right_layout.addWidget(QLabel("Audio Library:"))
+        audio_library_header = QHBoxLayout()
+        audio_library_header.addWidget(QLabel("Audio Library:"))
+        audio_library_header.addStretch()
+        self.open_output_voices_btn = QPushButton("📁")
+        self.open_output_voices_btn.setFixedSize(24, 24)
+        self.open_output_voices_btn.clicked.connect(lambda: self.open_directory("output_voices"))
+        audio_library_header.addWidget(self.open_output_voices_btn)
+        right_layout.addLayout(audio_library_header)
 
         self.audio_library_list = QListWidget()
         self.audio_library_list.itemClicked.connect(self.on_audio_library_clicked)
@@ -145,7 +154,14 @@ class TTSMainWindow(QMainWindow):
         right_layout.addWidget(player_group)
 
         # Video library section
-        right_layout.addWidget(QLabel("Video Library:"))
+        video_library_header = QHBoxLayout()
+        video_library_header.addWidget(QLabel("Video Library:"))
+        video_library_header.addStretch()
+        self.open_output_avatars_btn = QPushButton("📁")
+        self.open_output_avatars_btn.setFixedSize(24, 24)
+        self.open_output_avatars_btn.clicked.connect(lambda: self.open_directory("output_avatars"))
+        video_library_header.addWidget(self.open_output_avatars_btn)
+        right_layout.addLayout(video_library_header)
 
         self.video_library_list = QListWidget()
         self.video_library_list.itemClicked.connect(self.on_video_library_clicked)
@@ -297,6 +313,11 @@ class TTSMainWindow(QMainWindow):
         self.voice_combo = QComboBox()
         self.voice_combo.currentTextChanged.connect(self.on_voice_changed)
         voice_layout.addWidget(self.voice_combo, stretch=1)
+        self.open_voices_btn = QPushButton("📁")
+        self.open_voices_btn.clicked.connect(lambda: self.open_directory("voices"))
+        self.open_voices_btn.setFixedSize(24, 24)
+        self.open_voices_btn.setToolTip("Open voices folder")
+        voice_layout.addWidget(self.open_voices_btn)
         self.refresh_voices_btn = QPushButton("Refresh")
         self.refresh_voices_btn.clicked.connect(self.refresh_voices)
         voice_layout.addWidget(self.refresh_voices_btn)
@@ -363,6 +384,10 @@ class TTSMainWindow(QMainWindow):
         avatar_header = QHBoxLayout()
         avatar_header.addWidget(QLabel("Avatar Image:"))
         avatar_header.addStretch()
+        self.open_avatars_btn = QPushButton("📁")
+        self.open_avatars_btn.setFixedSize(24, 24)
+        self.open_avatars_btn.clicked.connect(lambda: self.open_directory("avatars"))
+        avatar_header.addWidget(self.open_avatars_btn)
         self.refresh_avatars_btn = QPushButton("Refresh")
         self.refresh_avatars_btn.clicked.connect(self.refresh_avatars)
         avatar_header.addWidget(self.refresh_avatars_btn)
@@ -1160,6 +1185,27 @@ class TTSMainWindow(QMainWindow):
                 self.status_label.setText(f"Deleted: {Path(video_path).name}")
             except Exception as e:
                 QMessageBox.critical(self, "Error", f"Failed to delete file:\n{e}")
+
+    def open_directory(self, directory_name):
+        """Open directory in the system file manager"""
+        directory = Path(directory_name)
+
+        # Create directory if it doesn't exist
+        if not directory.exists():
+            directory.mkdir(parents=True, exist_ok=True)
+
+        directory_path = str(directory.absolute())
+
+        try:
+            system = platform.system()
+            if system == "Windows":
+                os.startfile(directory_path)
+            elif system == "Darwin":  # macOS
+                subprocess.run(["open", directory_path], check=True)
+            else:  # Linux and others
+                subprocess.run(["xdg-open", directory_path], check=True)
+        except Exception as e:
+            QMessageBox.warning(self, "Error", f"Failed to open directory:\n{e}")
 
 
 def main():
