@@ -1,76 +1,76 @@
 """
-Whisper Transcription Worker
+Parakeet Transcription Worker
 
-Transcribes audio files using OpenAI Whisper.
+Transcribes audio files using NVIDIA NeMo Parakeet v3.
 Keeps model loaded in memory for faster subsequent transcriptions.
 """
 
 from typing import Optional, Callable
 
-# Global whisper model cache
-_whisper_model = None
-_whisper_model_name = None
+# Global model cache
+_asr_model = None
+_asr_model_name = None
 
 
-def load_whisper_model(model_name: str = "medium", progress_callback: Optional[Callable[[str], None]] = None):
-    """Load whisper model into memory cache"""
-    global _whisper_model, _whisper_model_name
+def load_parakeet_model(model_name: str = "nvidia/parakeet-tdt-0.6b-v3", progress_callback: Optional[Callable[[str], None]] = None):
+    """Load Parakeet ASR model into memory cache"""
+    global _asr_model, _asr_model_name
 
-    if _whisper_model is not None and _whisper_model_name == model_name:
+    if _asr_model is not None and _asr_model_name == model_name:
         if progress_callback:
-            progress_callback("Whisper model already loaded")
+            progress_callback("Parakeet model already loaded")
         return
 
     if progress_callback:
-        progress_callback(f"Loading Whisper {model_name} model...")
+        progress_callback(f"Loading Parakeet model ({model_name})...")
 
-    import whisper
-    _whisper_model = whisper.load_model(model_name)
-    _whisper_model_name = model_name
+    import nemo.collections.asr as nemo_asr
+    _asr_model = nemo_asr.models.ASRModel.from_pretrained(model_name)
+    _asr_model_name = model_name
 
     if progress_callback:
-        progress_callback("Whisper model loaded!")
+        progress_callback("Parakeet model loaded!")
 
 
-def unload_whisper_model():
-    """Unload whisper model from memory"""
-    global _whisper_model, _whisper_model_name
-    _whisper_model = None
-    _whisper_model_name = None
+def unload_parakeet_model():
+    """Unload Parakeet model from memory"""
+    global _asr_model, _asr_model_name
+    _asr_model = None
+    _asr_model_name = None
 
     import torch
     torch.cuda.empty_cache()
 
 
-def is_whisper_loaded() -> bool:
-    """Check if whisper model is loaded"""
-    return _whisper_model is not None
+def is_parakeet_loaded() -> bool:
+    """Check if Parakeet model is loaded"""
+    return _asr_model is not None
 
 
-def get_whisper_model_name() -> Optional[str]:
-    """Get the name of the loaded whisper model"""
-    return _whisper_model_name
+def get_parakeet_model_name() -> Optional[str]:
+    """Get the name of the loaded Parakeet model"""
+    return _asr_model_name
 
 
-def transcribe(audio_path: str, model_name: str = "medium") -> str:
+def transcribe(audio_path: str, model_name: str = "nvidia/parakeet-tdt-0.6b-v3") -> str:
     """
-    Transcribe audio file using whisper.
+    Transcribe audio file using NeMo Parakeet.
 
     Args:
         audio_path: Path to audio file
-        model_name: Whisper model name (tiny, base, small, medium, large)
+        model_name: NeMo ASR model name
 
     Returns:
         Transcribed text
     """
-    global _whisper_model, _whisper_model_name
+    global _asr_model, _asr_model_name
 
     # Load model if not cached or different model requested
-    if _whisper_model is None or _whisper_model_name != model_name:
-        load_whisper_model(model_name)
+    if _asr_model is None or _asr_model_name != model_name:
+        load_parakeet_model(model_name)
 
-    result = _whisper_model.transcribe(audio_path)
-    return result["text"]
+    transcriptions = _asr_model.transcribe([audio_path])
+    return transcriptions[0] if isinstance(transcriptions[0], str) else transcriptions[0].text
 
 
 # PyQt6 thread wrapper
@@ -81,7 +81,7 @@ try:
         finished = pyqtSignal(str)
         error = pyqtSignal(str)
 
-        def __init__(self, audio_path: str, model_name: str = "medium"):
+        def __init__(self, audio_path: str, model_name: str = "nvidia/parakeet-tdt-0.6b-v3"):
             super().__init__()
             self.audio_path = audio_path
             self.model_name = model_name

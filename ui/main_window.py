@@ -21,7 +21,7 @@ from qwen_tts import Qwen3TTSModel
 from workers import TranscribeThread, GenerateAudioThread, GenerateVideoThread
 from workers import (
     load_wan_models, unload_wan_models, get_wan_model_cache,
-    load_whisper_model, unload_whisper_model, is_whisper_loaded,
+    load_parakeet_model, unload_parakeet_model, is_parakeet_loaded,
 )
 
 
@@ -258,27 +258,27 @@ class TTSMainWindow(QMainWindow):
 
         models_layout.addWidget(QLabel("|"))
 
-        # Whisper model status
-        whisper_layout = QVBoxLayout()
-        whisper_header = QHBoxLayout()
-        whisper_header.addWidget(QLabel("Whisper:"))
-        self.whisper_status_label = QLabel("Not Loaded")
-        self.whisper_status_label.setStyleSheet("color: #ff6b6b;")
-        whisper_header.addWidget(self.whisper_status_label)
-        whisper_header.addStretch()
-        whisper_layout.addLayout(whisper_header)
-        whisper_btn_layout = QHBoxLayout()
-        self.whisper_load_btn = QPushButton("Load")
-        self.whisper_load_btn.setMaximumWidth(60)
-        self.whisper_load_btn.clicked.connect(self.load_whisper_model)
-        whisper_btn_layout.addWidget(self.whisper_load_btn)
-        self.whisper_unload_btn = QPushButton("Unload")
-        self.whisper_unload_btn.setMaximumWidth(60)
-        self.whisper_unload_btn.clicked.connect(self.unload_whisper_model)
-        self.whisper_unload_btn.setEnabled(False)
-        whisper_btn_layout.addWidget(self.whisper_unload_btn)
-        whisper_layout.addLayout(whisper_btn_layout)
-        models_layout.addLayout(whisper_layout)
+        # Parakeet model status
+        parakeet_layout = QVBoxLayout()
+        parakeet_header = QHBoxLayout()
+        parakeet_header.addWidget(QLabel("Parakeet:"))
+        self.parakeet_status_label = QLabel("Not Loaded")
+        self.parakeet_status_label.setStyleSheet("color: #ff6b6b;")
+        parakeet_header.addWidget(self.parakeet_status_label)
+        parakeet_header.addStretch()
+        parakeet_layout.addLayout(parakeet_header)
+        parakeet_btn_layout = QHBoxLayout()
+        self.parakeet_load_btn = QPushButton("Load")
+        self.parakeet_load_btn.setMaximumWidth(60)
+        self.parakeet_load_btn.clicked.connect(self.load_parakeet_model)
+        parakeet_btn_layout.addWidget(self.parakeet_load_btn)
+        self.parakeet_unload_btn = QPushButton("Unload")
+        self.parakeet_unload_btn.setMaximumWidth(60)
+        self.parakeet_unload_btn.clicked.connect(self.unload_parakeet_model)
+        self.parakeet_unload_btn.setEnabled(False)
+        parakeet_btn_layout.addWidget(self.parakeet_unload_btn)
+        parakeet_layout.addLayout(parakeet_btn_layout)
+        models_layout.addLayout(parakeet_layout)
 
         models_layout.addWidget(QLabel("|"))
 
@@ -544,15 +544,15 @@ class TTSMainWindow(QMainWindow):
         self.status_label.setText("Transcription complete")
         self.progress_bar.setVisible(False)
         self.transcribe_btn.setEnabled(True)
-        # Update whisper status since it was loaded during transcription
-        if is_whisper_loaded():
-            self.whisper_status_label.setText("Loaded")
-            self.whisper_status_label.setStyleSheet("color: #51cf66;")
-            self.whisper_load_btn.setEnabled(False)
-            self.whisper_unload_btn.setEnabled(True)
+        # Update parakeet status since it was loaded during transcription
+        if is_parakeet_loaded():
+            self.parakeet_status_label.setText("Loaded")
+            self.parakeet_status_label.setStyleSheet("color: #51cf66;")
+            self.parakeet_load_btn.setEnabled(False)
+            self.parakeet_unload_btn.setEnabled(True)
 
     def on_transcribe_error(self, error):
-        QMessageBox.critical(self, "Transcription Error", f"Failed to transcribe audio:\n{error}\n\nMake sure whisper is installed: pip install openai-whisper")
+        QMessageBox.critical(self, "Transcription Error", f"Failed to transcribe audio:\n{error}\n\nMake sure nemo_toolkit is installed: pip install nemo_toolkit[asr]")
         self.status_label.setText("Transcription failed")
         self.progress_bar.setVisible(False)
         self.transcribe_btn.setEnabled(True)
@@ -602,35 +602,35 @@ class TTSMainWindow(QMainWindow):
             self.qwen_unload_btn.setEnabled(False)
             self.status_label.setText("Qwen TTS model unloaded")
 
-    def load_whisper_model(self):
-        """Load Whisper model"""
-        self.status_label.setText("Loading Whisper model...")
+    def load_parakeet_model(self):
+        """Load Parakeet model"""
+        self.status_label.setText("Loading Parakeet model...")
         self.progress_bar.setVisible(True)
-        self.whisper_load_btn.setEnabled(False)
+        self.parakeet_load_btn.setEnabled(False)
         QApplication.processEvents()
 
         try:
-            load_whisper_model("medium")
-            self.whisper_status_label.setText("Loaded")
-            self.whisper_status_label.setStyleSheet("color: #51cf66;")
-            self.whisper_load_btn.setEnabled(False)
-            self.whisper_unload_btn.setEnabled(True)
-            self.status_label.setText("Whisper model loaded")
+            load_parakeet_model()
+            self.parakeet_status_label.setText("Loaded")
+            self.parakeet_status_label.setStyleSheet("color: #51cf66;")
+            self.parakeet_load_btn.setEnabled(False)
+            self.parakeet_unload_btn.setEnabled(True)
+            self.status_label.setText("Parakeet model loaded")
         except Exception as e:
-            QMessageBox.critical(self, "Error", f"Failed to load Whisper model:\n{str(e)}")
-            self.status_label.setText("Failed to load Whisper model")
-            self.whisper_load_btn.setEnabled(True)
+            QMessageBox.critical(self, "Error", f"Failed to load Parakeet model:\n{str(e)}")
+            self.status_label.setText("Failed to load Parakeet model")
+            self.parakeet_load_btn.setEnabled(True)
         finally:
             self.progress_bar.setVisible(False)
 
-    def unload_whisper_model(self):
-        """Unload Whisper model"""
-        unload_whisper_model()
-        self.whisper_status_label.setText("Not Loaded")
-        self.whisper_status_label.setStyleSheet("color: #ff6b6b;")
-        self.whisper_load_btn.setEnabled(True)
-        self.whisper_unload_btn.setEnabled(False)
-        self.status_label.setText("Whisper model unloaded")
+    def unload_parakeet_model(self):
+        """Unload Parakeet model"""
+        unload_parakeet_model()
+        self.parakeet_status_label.setText("Not Loaded")
+        self.parakeet_status_label.setStyleSheet("color: #ff6b6b;")
+        self.parakeet_load_btn.setEnabled(True)
+        self.parakeet_unload_btn.setEnabled(False)
+        self.status_label.setText("Parakeet model unloaded")
 
     def load_wan_model(self):
         """Load Wan S2V model"""

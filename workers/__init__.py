@@ -25,11 +25,11 @@ except ImportError:
 
 try:
     from workers.transcribe_worker import (
-        load_whisper_model,
-        unload_whisper_model,
-        is_whisper_loaded,
+        load_parakeet_model,
+        unload_parakeet_model,
+        is_parakeet_loaded,
         transcribe,
     )
-    __all__.extend(['load_whisper_model', 'unload_whisper_model', 'is_whisper_loaded', 'transcribe'])
+    __all__.extend(['load_parakeet_model', 'unload_parakeet_model', 'is_parakeet_loaded', 'transcribe'])
 except ImportError:
     pass
